@@ -1,98 +1,113 @@
-import javax.swing.JOptionPane;
-import javax.swing.JFrame;
+// java
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.ActionEvent;
 
 public class Login extends JFrame {
-
-    private javax.swing.JButton btnIngresar;
-    private javax.swing.JButton btnSalir;
-    private javax.swing.JLabel jLabel1;
-    private javax.swing.JLabel jLabel2;
-    private javax.swing.JPasswordField txtPassword;
-    private javax.swing.JTextField txtUsuario;
+    private JTextField txtUsuario;
+    private JPasswordField txtClave;
+    private JButton btnIngresar;
+    private JButton btnSalir;
 
     public Login() {
-        initComponents();
-    }
+        setTitle("Login - Gestion Los Troncos");
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
-    private void initComponents() {
+        // Fuente y dimensiones más grandes para mejor lectura
+        Font labelFont = new Font("Segoe UI", Font.PLAIN, 16);
+        Font fieldFont = new Font("Segoe UI", Font.PLAIN, 16);
+        Dimension fieldDim = new Dimension(260, 34);
+        Dimension btnDim = new Dimension(140, 36);
 
-        jLabel1 = new javax.swing.JLabel();
-        jLabel2 = new javax.swing.JLabel();
-        txtUsuario = new javax.swing.JTextField();
-        txtPassword = new javax.swing.JPasswordField();
-        btnIngresar = new javax.swing.JButton();
-        btnSalir = new javax.swing.JButton();
+        // Layout flexible
+        JPanel content = new JPanel(new GridBagLayout());
+        content.setBorder(BorderFactory.createEmptyBorder(18, 18, 18, 18));
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(8, 8, 8, 8);
+        gbc.anchor = GridBagConstraints.WEST;
 
-        setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
-        setTitle("Sistema - Login");
+        // Usuario
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        JLabel lblUser = new JLabel("Usuario:");
+        lblUser.setFont(labelFont);
+        content.add(lblUser, gbc);
 
-        jLabel1.setText("Usuario:");
-        jLabel2.setText("Contraseña:");
+        gbc.gridx = 1;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 1.0;
+        txtUsuario = new JTextField();
+        txtUsuario.setFont(fieldFont);
+        txtUsuario.setPreferredSize(fieldDim);
+        content.add(txtUsuario, gbc);
 
-        btnIngresar.setText("Ingresar");
-        btnIngresar.addActionListener(evt -> btnIngresarActionPerformed());
+        // Clave
+        gbc.gridx = 0;
+        gbc.gridy = 1;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.weightx = 0;
+        JLabel lblPass = new JLabel("Clave:");
+        lblPass.setFont(labelFont);
+        content.add(lblPass, gbc);
 
-        btnSalir.setText("Salir");
-        btnSalir.addActionListener(evt -> btnSalirActionPerformed());
+        gbc.gridx = 1;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 1.0;
+        txtClave = new JPasswordField();
+        txtClave.setFont(fieldFont);
+        txtClave.setPreferredSize(fieldDim);
+        content.add(txtClave, gbc);
 
-        javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());
-        getContentPane().setLayout(layout);
-        layout.setHorizontalGroup(
-                layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                        .addGroup(layout.createSequentialGroup()
-                                .addGap(40)
-                                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                                        .addComponent(jLabel2)
-                                        .addComponent(jLabel1))
-                                .addGap(18)
-                                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                                        .addComponent(txtUsuario, javax.swing.GroupLayout.DEFAULT_SIZE, 150, Short.MAX_VALUE)
-                                        .addComponent(txtPassword))
-                                .addContainerGap(40, Short.MAX_VALUE))
-                        .addGroup(layout.createSequentialGroup()
-                                .addGap(60)
-                                .addComponent(btnIngresar)
-                                .addGap(40)
-                                .addComponent(btnSalir)
-                                .addContainerGap(60, Short.MAX_VALUE))
-        );
-        layout.setVerticalGroup(
-                layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                        .addGroup(layout.createSequentialGroup()
-                                .addGap(40)
-                                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                                        .addComponent(jLabel1)
-                                        .addComponent(txtUsuario, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                                .addGap(20)
-                                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                                        .addComponent(jLabel2)
-                                        .addComponent(txtPassword, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                                .addGap(30)
-                                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                                        .addComponent(btnIngresar)
-                                        .addComponent(btnSalir))
-                                .addContainerGap(40, Short.MAX_VALUE))
-        );
+        // Botones (alineados a la derecha)
+        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 0));
+        btnIngresar = new JButton("Ingresar");
+        btnIngresar.setPreferredSize(btnDim);
+        btnIngresar.setFont(fieldFont);
+        btnSalir = new JButton("Salir");
+        btnSalir.setPreferredSize(btnDim);
+        btnSalir.setFont(fieldFont);
+        btnPanel.add(btnIngresar);
+        btnPanel.add(btnSalir);
 
+        gbc.gridx = 0;
+        gbc.gridy = 2;
+        gbc.gridwidth = 2;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 0;
+        content.add(btnPanel, gbc);
+
+        setContentPane(content);
         pack();
+        setResizable(false);
         setLocationRelativeTo(null);
+
+        // Acciones
+        btnIngresar.addActionListener((ActionEvent e) -> doLogin());
+        btnSalir.addActionListener(e -> System.exit(0));
+
+        // Enter en los campos activa el login
+        getRootPane().setDefaultButton(btnIngresar);
     }
 
-    private void btnIngresarActionPerformed() {
-        String usuario = txtUsuario.getText();
-        String contraseña = new String(txtPassword.getPassword());
-
-        if(usuario.equals("admin") && contraseña.equals("1234")) {
-            MenuPrincipal menu;
-            menu = new MenuPrincipal();
+    private void doLogin() {
+        String user = txtUsuario.getText().trim();
+        String pass = new String(txtClave.getPassword());
+        if ("".equals(user) && "".equals(pass)) {
+            MenuPrincipal menu = new MenuPrincipal();
             menu.setVisible(true);
-            this.dispose();
+            dispose();
         } else {
-            JOptionPane.showMessageDialog(this, "Usuario o contraseña incorrectos", "Error", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this,
+                    "Usuario o contraseña incorrectos",
+                    "Error",
+                    JOptionPane.ERROR_MESSAGE);
         }
     }
 
-    private void btnSalirActionPerformed() {
-        System.exit(0);
+    // Para pruebas rápidos
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> {
+            new Login().setVisible(true);
+        });
     }
 }
