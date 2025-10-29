@@ -7,9 +7,11 @@ import java.awt.*;
 import java.awt.event.*;
 import java.awt.print.*;
 import java.sql.*;
+import java.text.SimpleDateFormat;
 import java.util.List;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Date;
 
 import static java.awt.print.Printable.PAGE_EXISTS;
 
@@ -374,21 +376,16 @@ public class VentanaPedido extends JDialog {
     }
 
     private void imprimirTicket() {
-
         System.out.println(">>> INICIANDO IMPRESIÓN DE TICKET <<<");
 
         List<ItemPedido> pedido = ModeloPedidos.cargarPedidoDesdeBD(numeroMesa);
 
-
-        // Antes de crear el PrinterJob
         for (ItemPedido item : pedido) {
             System.out.println("Producto: " + item.getNombreProducto() +
                     " - Precio: " + item.getPrecioUnitario() +
                     " - Cantidad: " + item.getCantidad() +
                     " - Subtotal: " + item.getSubtotal());
         }
-
-
 
         // Verificar stock antes de imprimir
         StringBuilder productosAgotados = new StringBuilder();
@@ -397,8 +394,7 @@ public class VentanaPedido extends JDialog {
         try {
             Connection con = DriverManager.getConnection("jdbc:mysql://localhost:3306/los_troncos", "root", "");
 
-            for (int i = 0; i < pedido.size(); i++) {
-                ItemPedido item = pedido.get(i);
+            for (ItemPedido item : pedido) {
                 String sql = "SELECT stock FROM productos WHERE id = ?";
                 PreparedStatement ps = con.prepareStatement(sql);
                 ps.setInt(1, item.getIdProducto());
@@ -413,7 +409,6 @@ public class VentanaPedido extends JDialog {
                                 .append(", Disponible: ").append(stock).append(")\n");
                     }
                 }
-
                 rs.close();
                 ps.close();
             }
@@ -434,15 +429,10 @@ public class VentanaPedido extends JDialog {
         // Imprimir ticket
         PrinterJob job = PrinterJob.getPrinterJob();
 
-        // Configurar formato de página para 48mm
         PageFormat pf = job.defaultPage();
         Paper paper = pf.getPaper();
-
-        // 48mm de ancho = 136.06 puntos (1mm = 2.834645669 puntos)
-        double width = 48 * 2.834645669;  // ~136 puntos
-        double height = 842; // Altura larga para ticket continuo (A4 height en puntos)
-
-        // Configurar tamaño del papel sin márgenes
+        double width = 48 * 2.834645669;
+        double height = 842;
         paper.setSize(width, height);
         paper.setImageableArea(0, 0, width, height);
         pf.setPaper(paper);
@@ -454,11 +444,39 @@ public class VentanaPedido extends JDialog {
             try {
                 job.print();
 
+                // ✅ GUARDAR EN resumenes_diarios ANTES DE BORRAR
+                Connection con = DriverManager.getConnection("jdbc:mysql://localhost:3306/los_troncos", "root", "");
+
+                // Calcular total
+                double totalMesa = 0;
+                StringBuilder productosDetalle = new StringBuilder();
+                for (ItemPedido item : pedido) {
+                    totalMesa += item.getSubtotal();
+                    productosDetalle.append(item.getNombreProducto())
+                            .append(" x").append(item.getCantidad())
+                            .append(" ($").append(item.getPrecioUnitario())
+                            .append("); ");
+                }
+
+                // Insertar en resumenes_diarios
+                SimpleDateFormat sdfDB = new SimpleDateFormat("yyyy-MM-dd");
+                SimpleDateFormat sdfHora = new SimpleDateFormat("HH:mm:ss");
+                Date ahora = new Date();
+
+                String sqlInsert = "INSERT INTO resumenes_diarios (fecha, hora, mesa, total, productos) VALUES (?, ?, ?, ?, ?)";
+                PreparedStatement psInsert = con.prepareStatement(sqlInsert);
+                psInsert.setString(1, sdfDB.format(ahora));
+                psInsert.setString(2, sdfHora.format(ahora));
+                psInsert.setInt(3, numeroMesa);
+                psInsert.setDouble(4, totalMesa);
+                psInsert.setString(5, productosDetalle.toString());
+                psInsert.executeUpdate();
+                psInsert.close();
+
                 // Descontar stock
                 descontarStockPedido(pedido);
 
                 // Cerrar la mesa (borrar pedido de la BD)
-                Connection con = DriverManager.getConnection("jdbc:mysql://localhost:3306/los_troncos", "root", "");
                 String sql = "DELETE FROM `mesa pedido` WHERE mesa = ?";
                 PreparedStatement ps = con.prepareStatement(sql);
                 ps.setInt(1, numeroMesa);
@@ -469,7 +487,8 @@ public class VentanaPedido extends JDialog {
                 JOptionPane.showMessageDialog(this,
                         "Ticket impreso correctamente.\n" +
                                 "Stock actualizado.\n" +
-                                "Mesa cerrada.",
+                                "Mesa cerrada.\n" +
+                                "Guardado en resumen diario.",
                         "Éxito", JOptionPane.INFORMATION_MESSAGE);
 
                 // Actualizar estado de la mesa en el menú principal
@@ -483,7 +502,7 @@ public class VentanaPedido extends JDialog {
                         "Error", JOptionPane.ERROR_MESSAGE);
             } catch (Exception ex) {
                 ex.printStackTrace();
-                JOptionPane.showMessageDialog(this, "Error al cerrar la mesa: " + ex.getMessage(),
+                JOptionPane.showMessageDialog(this, "Error: " + ex.getMessage(),
                         "Error", JOptionPane.ERROR_MESSAGE);
             }
         }
@@ -496,6 +515,7 @@ public class VentanaPedido extends JDialog {
             this.items = items;
         }
 
+        // Método que dibuja el contenido del ticket
         public int print(Graphics graphics, PageFormat pageFormat, int pageIndex) throws PrinterException {
             if (pageIndex > 0) {
                 return NO_SUCH_PAGE;
@@ -517,7 +537,7 @@ public class VentanaPedido extends JDialog {
 
             // === ENCABEZADO ===
             g2d.setFont(fTitulo);
-            String titulo = "LOS TRONCOS";
+            String titulo = "LOS TRONCOS RESTO BAR";
             int anchoTitulo = g2d.getFontMetrics().stringWidth(titulo);
             g2d.drawString(titulo, (anchoTicket - anchoTitulo) / 2, y);
             y += lineHeight;
@@ -534,10 +554,10 @@ public class VentanaPedido extends JDialog {
             y += lineHeight;
 
             // Línea separadora
-            g2d.drawString("======================", margen, y);
+            g2d.drawString("==========================", margen, y);
             y += lineHeight;
 
-            // === PRODUCTOS ===
+            // === PRODUCTOS === AJUSTAR NOMBRES LARGOS PARA IMPRESORA 48 MM
             double total = 0;
             for (ItemPedido item : items) {
                 String nombre = item.getNombreProducto();
@@ -580,7 +600,7 @@ public class VentanaPedido extends JDialog {
 
             // Línea separadora antes del total
             y += 2;
-            g2d.drawString("======================", margen, y);
+            g2d.drawString("==========================", margen, y);
             y += lineHeight;
 
             // === TOTAL ===
@@ -595,7 +615,7 @@ public class VentanaPedido extends JDialog {
 
             // Línea separadora final
             g2d.setFont(fNormal);
-            g2d.drawString("======================", margen, y);
+            g2d.drawString("==========================", margen, y);
             y += lineHeight;
 
             // === PIE DE PÁGINA ===

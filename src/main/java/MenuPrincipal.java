@@ -4,9 +4,17 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.print.PageFormat;
+import java.awt.print.Paper;
+import java.awt.print.Printable;
+import java.awt.print.PrinterException;
+import java.awt.print.PrinterJob;
 import java.sql.*;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Date;
+import java.util.List;
 
 public class MenuPrincipal extends JFrame {
     private final JButton[] mesas = new JButton[40];
@@ -133,7 +141,7 @@ public class MenuPrincipal extends JFrame {
         itemResumenMes.setFont(new Font("Arial", Font.PLAIN, 13));
         itemResumenMes.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
-                mostrarResumenMensual();
+                mostrarResumenMes();
             }
         });
 
@@ -201,7 +209,7 @@ public class MenuPrincipal extends JFrame {
         });
         menuAyuda.add(itemAcercaDe);
 
-// Agregar menús a la barra
+        // Agregar menús a la barra
         menuBar.add(menuArchivo);
         menuBar.add(menuReportes);
         menuBar.add(menuAyuda);
@@ -284,64 +292,315 @@ public class MenuPrincipal extends JFrame {
         try {
             Connection con = DriverManager.getConnection("jdbc:mysql://localhost:3306/los_troncos", "root", "");
 
-            // Consulta para obtener el resumen por mesa
-            String sqlMesas = "SELECT mp.mesa, SUM(mp.cantidad * p.precio) as total " +
-                    "FROM `mesa pedido` mp " +
-                    "JOIN productos p ON mp.producto_id = p.id " +
-                    "GROUP BY mp.mesa " +
-                    "ORDER BY mp.mesa";
-            Statement st = con.createStatement();
-            ResultSet rs = st.executeQuery(sqlMesas);
+            SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy");
+            SimpleDateFormat sdfDB = new SimpleDateFormat("yyyy-MM-dd");
+            Date fechaHoy = new Date();
+            String fecha = sdf.format(fechaHoy);
+            String fechaDB = sdfDB.format(fechaHoy);
+
+            // Consultar resumenes_diarios de hoy
+            String sqlDia = "SELECT mesa, total, productos FROM resumenes_diarios WHERE fecha = ? ORDER BY mesa";
+            PreparedStatement ps = con.prepareStatement(sqlDia);
+            ps.setString(1, fechaDB);
+            ResultSet rs = ps.executeQuery();
 
             StringBuilder mensaje = new StringBuilder();
-            SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy");
-            String fecha = sdf.format(new Date());
-
             mensaje.append("═══════════════════════════════════════\n");
             mensaje.append("       RESUMEN DEL DÍA\n");
             mensaje.append("       ").append(fecha).append("\n");
             mensaje.append("═══════════════════════════════════════\n\n");
 
             double totalGeneral = 0;
-            int mesasOcupadas = 0;
+            int mesasAtendidas = 0;
+            List<String> datosMesas = new ArrayList<>();
 
             while (rs.next()) {
                 int mesa = rs.getInt("mesa");
                 double totalMesa = rs.getDouble("total");
+                String productos = rs.getString("productos");
 
-                mensaje.append(String.format("Mesa %2d ................. $%.2f\n", mesa, totalMesa));
+                String lineaMesa = String.format("Mesa %2d ................. $%.2f\n", mesa, totalMesa);
+                mensaje.append(lineaMesa);
+                datosMesas.add(lineaMesa);
 
                 totalGeneral += totalMesa;
-                mesasOcupadas++;
+                mesasAtendidas++;
+            }
+
+            if (mesasAtendidas == 0) {
+                mensaje.append("\n⚠️  No hay ventas registradas hoy\n\n");
             }
 
             mensaje.append("\n───────────────────────────────────────\n");
-            mensaje.append(String.format("Mesas ocupadas: %d\n", mesasOcupadas));
-            mensaje.append(String.format("Mesas libres: %d\n", (40 - mesasOcupadas)));
+            mensaje.append(String.format("Mesas atendidas: %d\n", mesasAtendidas));
             mensaje.append("───────────────────────────────────────\n");
-            mensaje.append(String.format("TOTAL GENERAL: $%.2f\n", totalGeneral));
+            mensaje.append(String.format("TOTAL DEL DÍA: $%.2f\n", totalGeneral));
             mensaje.append("═══════════════════════════════════════");
 
             rs.close();
-            st.close();
-            con.close();
+            ps.close();
 
-            // Mostrar diálogo con el resumen
+            // Variables finales
+            final double totalFinal = totalGeneral;
+            final int mesasAtendidasFinal = mesasAtendidas;
+            final String fechaFinal = fecha;
+            final List<String> datosMesasFinal = new ArrayList<>(datosMesas);
+
+            // Panel con botones
+            JPanel panel = new JPanel(new BorderLayout(10, 10));
+
             JTextArea textArea = new JTextArea(mensaje.toString());
             textArea.setFont(new Font("Monospaced", Font.BOLD, 14));
             textArea.setEditable(false);
 
             JScrollPane scrollPane = new JScrollPane(textArea);
             scrollPane.setPreferredSize(new Dimension(450, 400));
+            panel.add(scrollPane, BorderLayout.CENTER);
 
-            JOptionPane.showMessageDialog(this, scrollPane,
+            // Botones
+            JPanel panelBotones = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 5));
+
+            JButton btnImprimir = new JButton("🖨 Imprimir");
+            btnImprimir.setEnabled(mesasAtendidas > 0);
+            btnImprimir.addActionListener(e -> {
+                imprimirResumenDia(fechaFinal, datosMesasFinal, mesasAtendidasFinal, totalFinal);
+            });
+
+            JButton btnCerrarDia = new JButton("💾 Cerrar Día");
+            btnCerrarDia.setBackground(new Color(76, 175, 80));
+            btnCerrarDia.setForeground(Color.WHITE);
+            btnCerrarDia.setEnabled(mesasAtendidas > 0);
+            btnCerrarDia.addActionListener(e -> {
+                int confirm = JOptionPane.showConfirmDialog(this,
+                        "¿Cerrar el día?\n" +
+                                "Se guardará el total en resumen mensual\n" +
+                                "y se limpiarán los tickets del día.",
+                        "Confirmar Cierre de Día",
+                        JOptionPane.YES_NO_OPTION,
+                        JOptionPane.WARNING_MESSAGE);
+
+                if (confirm == JOptionPane.YES_OPTION) {
+                    try {
+                        Calendar cal = Calendar.getInstance();
+                        int dia = cal.get(Calendar.DAY_OF_MONTH);
+                        int mes = cal.get(Calendar.MONTH) + 1;
+                        int anio = cal.get(Calendar.YEAR);
+
+                        // Guardar en resumenes_mensuales
+                        String sqlInsertMensual = "INSERT INTO resumenes_mensuales (fecha, dia, mes, anio, total_dia, mesas_atendidas) " +
+                                "VALUES (?, ?, ?, ?, ?, ?) " +
+                                "ON DUPLICATE KEY UPDATE total_dia = total_dia + ?, mesas_atendidas = mesas_atendidas + ?";
+                        PreparedStatement psInsertMensual = con.prepareStatement(sqlInsertMensual);
+                        psInsertMensual.setString(1, fechaDB);
+                        psInsertMensual.setInt(2, dia);
+                        psInsertMensual.setInt(3, mes);
+                        psInsertMensual.setInt(4, anio);
+                        psInsertMensual.setDouble(5, totalFinal);
+                        psInsertMensual.setInt(6, mesasAtendidasFinal);
+                        psInsertMensual.setDouble(7, totalFinal);
+                        psInsertMensual.setInt(8, mesasAtendidasFinal);
+                        psInsertMensual.executeUpdate();
+                        psInsertMensual.close();
+
+                        // Borrar resumenes_diarios de hoy
+                        String sqlDelete = "DELETE FROM resumenes_diarios WHERE fecha = ?";
+                        PreparedStatement psDelete = con.prepareStatement(sqlDelete);
+                        psDelete.setString(1, fechaDB);
+                        int filasEliminadas = psDelete.executeUpdate();
+                        psDelete.close();
+
+                        con.close();
+
+                        JOptionPane.showMessageDialog(this,
+                                "Día cerrado correctamente.\n" +
+                                        "Total guardado: $" + String.format("%.2f", totalFinal) + "\n" +
+                                        filasEliminadas + " tickets eliminados.",
+                                "Éxito",
+                                JOptionPane.INFORMATION_MESSAGE);
+
+                        Window window = SwingUtilities.getWindowAncestor((Component) e.getSource());
+                        window.dispose();
+
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                        JOptionPane.showMessageDialog(this,
+                                "Error: " + ex.getMessage(),
+                                "Error",
+                                JOptionPane.ERROR_MESSAGE);
+                    }
+                }
+            });
+
+            panelBotones.add(btnImprimir);
+            panelBotones.add(btnCerrarDia);
+            panel.add(panelBotones, BorderLayout.SOUTH);
+
+            JOptionPane.showMessageDialog(this, panel,
                     "Resumen del Día", JOptionPane.INFORMATION_MESSAGE);
+
+            if (con != null && !con.isClosed()) {
+                con.close();
+            }
 
         } catch (Exception e) {
             e.printStackTrace();
             JOptionPane.showMessageDialog(this,
-                    "Error al generar el resumen: " + e.getMessage(),
+                    "Error: " + e.getMessage(),
                     "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    // Método para imprimir el resumen del día
+    private void imprimirResumenDia(String fecha, List<String> datosMesas, int mesasOcupadas, double totalGeneral) {
+        PrinterJob job = PrinterJob.getPrinterJob();
+
+        // Configurar formato de página para 48mm
+        PageFormat pf = job.defaultPage();
+        Paper paper = pf.getPaper();
+
+        double width = 48 * 2.834645669;  // 48mm
+        double height = 842;
+
+        paper.setSize(width, height);
+        paper.setImageableArea(0, 0, width, height);
+        pf.setPaper(paper);
+        pf.setOrientation(PageFormat.PORTRAIT);
+
+        job.setPrintable(new ResumenDiaPrintable(fecha, datosMesas, mesasOcupadas, totalGeneral), pf);
+
+        if (job.printDialog()) {
+            try {
+                job.print();
+                JOptionPane.showMessageDialog(this,
+                        "Resumen impreso correctamente.",
+                        "Éxito", JOptionPane.INFORMATION_MESSAGE);
+            } catch (PrinterException ex) {
+                JOptionPane.showMessageDialog(this,
+                        "Error al imprimir: " + ex.getMessage(),
+                        "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        }
+    }
+
+    // Clase interna para imprimir el resumen
+    private class ResumenDiaPrintable implements Printable {
+        private String fecha;
+        private List<String> datosMesas;
+        private int mesasOcupadas;
+        private double totalGeneral;
+
+        public ResumenDiaPrintable(String fecha, List<String> datosMesas, int mesasOcupadas, double totalGeneral) {
+            this.fecha = fecha;
+            this.datosMesas = datosMesas;
+            this.mesasOcupadas = mesasOcupadas;
+            this.totalGeneral = totalGeneral;
+        }
+
+        @Override
+        public int print(Graphics g, PageFormat pf, int page) throws PrinterException {
+            if (page > 0) {
+                return NO_SUCH_PAGE;
+            }
+
+            Graphics2D g2d = (Graphics2D) g;
+            g2d.translate(pf.getImageableX(), pf.getImageableY());
+
+            // Fuentes optimizadas para 48mm (igual que TicketPrintable)
+            Font fTitulo = new Font("Courier New", Font.BOLD, 10);
+            Font fNormal = new Font("Courier New", Font.PLAIN, 8);
+            Font fPequena = new Font("Courier New", Font.PLAIN, 7);
+            Font fTotal = new Font("Courier New", Font.BOLD, 10);
+
+            int y = 10;
+            int lineHeight = 11;
+            int margen = 3;
+            int anchoTicket = (int) pf.getImageableWidth();
+
+            // === ENCABEZADO ===
+            g2d.setFont(fTitulo);
+            String titulo = "LOS TRONCOS RESTO BAR";
+            int anchoTitulo = g2d.getFontMetrics().stringWidth(titulo);
+            g2d.drawString(titulo, (anchoTicket - anchoTitulo) / 2, y);
+            y += lineHeight;
+
+            // Subtítulo
+            g2d.setFont(fNormal);
+            String subtitulo = "RESUMEN DEL DIA";
+            int anchoSubtitulo = g2d.getFontMetrics().stringWidth(subtitulo);
+            g2d.drawString(subtitulo, (anchoTicket - anchoSubtitulo) / 2, y);
+            y += lineHeight;
+
+            // Fecha
+            g2d.setFont(fPequena);
+            g2d.drawString(fecha, margen, y);
+            y += lineHeight;
+
+            // Línea separadora
+            g2d.setFont(fNormal);
+            g2d.drawString("==========================", margen, y);
+            y += lineHeight;
+
+            // === DATOS DE LAS MESAS ===
+            for (String linea : datosMesas) {
+                // Parsear la línea para obtener mesa y total
+                String[] partes = linea.split("\\.");
+                if (partes.length >= 2) {
+                    String mesaStr = partes[0].trim(); // "Mesa X"
+                    String totalStr = partes[partes.length - 1].trim().replace("\n", ""); // "$XX.XX"
+
+                    g2d.drawString(mesaStr, margen, y);
+
+                    // Alinear total a la derecha
+                    int anchoTotal = g2d.getFontMetrics().stringWidth(totalStr);
+                    g2d.drawString(totalStr, anchoTicket - anchoTotal - margen, y);
+
+                    y += lineHeight;
+                }
+            }
+
+            // Línea separadora antes del resumen
+            y += 2;
+            g2d.drawString("==========================", margen, y);
+            y += lineHeight;
+
+            // === RESUMEN ===
+            g2d.drawString("Mesas ocupadas: " + mesasOcupadas, margen, y);
+            y += lineHeight;
+            g2d.drawString("Mesas libres: " + (40 - mesasOcupadas), margen, y);
+            y += lineHeight + 2;
+
+            g2d.drawString("==========================", margen, y);
+            y += lineHeight;
+
+            // === TOTAL GENERAL ===
+            g2d.setFont(fTotal);
+            String textoTotal = "TOTAL GENERAL:";
+            String valorTotal = String.format("$%.2f", totalGeneral);
+
+            g2d.drawString(textoTotal, margen, y);
+            y += lineHeight;
+
+            int anchoValorTotal = g2d.getFontMetrics().stringWidth(valorTotal);
+            g2d.drawString(valorTotal, (anchoTicket - anchoValorTotal) / 2, y);
+            y += lineHeight + 5;
+
+            // Línea separadora final
+            g2d.setFont(fNormal);
+            g2d.drawString("==========================", margen, y);
+            y += lineHeight;
+
+            // === PIE DE PÁGINA ===
+            g2d.setFont(fPequena);
+            String gracias = "Gracias por su visita";
+            int anchoGracias = g2d.getFontMetrics().stringWidth(gracias);
+            g2d.drawString(gracias, (anchoTicket - anchoGracias) / 2, y);
+            y += lineHeight - 2;
+
+            String vuelva = "Vuelva pronto!";
+            int anchoVuelva = g2d.getFontMetrics().stringWidth(vuelva);
+            g2d.drawString(vuelva, (anchoTicket - anchoVuelva) / 2, y);
+
+            return PAGE_EXISTS;
         }
     }
 
@@ -399,6 +658,10 @@ public class MenuPrincipal extends JFrame {
             int mesaActual = -1;
             double totalMesa = 0;
 
+            // Lista para guardar datos de impresión
+            List<DatosMesa> datosMesas = new ArrayList<>();
+            List<String> itemsMesaActual = new ArrayList<>();
+
             while (rs.next()) {
                 int mesa = rs.getInt("mesa");
                 String producto = rs.getString("nombre");
@@ -406,10 +669,14 @@ public class MenuPrincipal extends JFrame {
                 double precio = rs.getDouble("precio");
                 double subtotal = rs.getDouble("subtotal");
 
-                // Si cambia de mesa, mostrar el total de la mesa anterior
+                // Si cambia de mesa, guardar datos de la mesa anterior
                 if (mesaActual != -1 && mesaActual != mesa) {
                     resumen.append(String.format("\n   Total Mesa %d: $%.2f\n", mesaActual, totalMesa));
                     resumen.append("───────────────────────────────────────────────────\n\n");
+
+                    // Guardar datos de la mesa para imprimir
+                    datosMesas.add(new DatosMesa(mesaActual, new ArrayList<>(itemsMesaActual), totalMesa));
+                    itemsMesaActual.clear();
                     totalMesa = 0;
                 }
 
@@ -419,7 +686,11 @@ public class MenuPrincipal extends JFrame {
                     mesaActual = mesa;
                 }
 
-                resumen.append(String.format("  %-25s x%3d  $%8.2f\n", producto, cantidad, subtotal));
+                String lineaItem = String.format("  %-25s x%3d  $%8.2f\n", producto, cantidad, subtotal);
+                resumen.append(lineaItem);
+                itemsMesaActual.add(String.format("%-18s x%d $%.2f",
+                        producto.length() > 18 ? producto.substring(0, 18) : producto,
+                        cantidad, subtotal));
 
                 totalMesa += subtotal;
                 totalGeneral += subtotal;
@@ -429,6 +700,9 @@ public class MenuPrincipal extends JFrame {
             if (mesaActual != -1) {
                 resumen.append(String.format("\n   Total Mesa %d: $%.2f\n", mesaActual, totalMesa));
                 resumen.append("───────────────────────────────────────────────────\n\n");
+
+                // Guardar datos de la última mesa
+                datosMesas.add(new DatosMesa(mesaActual, new ArrayList<>(itemsMesaActual), totalMesa));
             }
 
             resumen.append("═══════════════════════════════════════════════════\n");
@@ -438,7 +712,10 @@ public class MenuPrincipal extends JFrame {
             rs.close();
             st.close();
 
-            // Mostrar resumen antes de borrar
+            // Crear panel con botones
+            JPanel panel = new JPanel(new BorderLayout(10, 10));
+
+            // TextArea con el resumen
             JTextArea textArea = new JTextArea(resumen.toString());
             textArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
             textArea.setEditable(false);
@@ -446,7 +723,28 @@ public class MenuPrincipal extends JFrame {
             JScrollPane scrollPane = new JScrollPane(textArea);
             scrollPane.setPreferredSize(new Dimension(550, 500));
 
-            JOptionPane.showMessageDialog(this, scrollPane,
+            panel.add(scrollPane, BorderLayout.CENTER);
+
+            // Panel de botones
+            JPanel panelBotones = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 5));
+
+            JButton btnImprimir = new JButton("🖨 Imprimir Resumen");
+            btnImprimir.setFont(new Font("Arial", Font.BOLD, 12));
+
+            // Variables finales para usar en el listener
+            final double totalFinal = totalGeneral;
+            final String mesAnioFinal = mesAnio;
+            final List<DatosMesa> datosMesasFinal = new ArrayList<>(datosMesas);
+
+            btnImprimir.addActionListener(e -> {
+                imprimirResumenMensual(mesAnioFinal, datosMesasFinal, totalFinal);
+            });
+
+            panelBotones.add(btnImprimir);
+            panel.add(panelBotones, BorderLayout.SOUTH);
+
+            // Mostrar resumen antes de borrar
+            JOptionPane.showMessageDialog(this, panel,
                     "Resumen Mensual - " + mesAnio, JOptionPane.INFORMATION_MESSAGE);
 
             // Ahora borrar todos los pedidos
@@ -474,6 +772,346 @@ public class MenuPrincipal extends JFrame {
             JOptionPane.showMessageDialog(this,
                     "Error al generar el resumen mensual: " + e.getMessage(),
                     "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private void mostrarResumenMes() {
+        JFrame frame = new JFrame("Resumen del Mes");
+        frame.setSize(600, 500);
+        frame.setLocationRelativeTo(this);
+
+        JPanel panel = new JPanel(new BorderLayout(10, 10));
+        panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        // Selector de mes y año
+        JPanel panelSuperior = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 10));
+
+        String[] meses = {"Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+                "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"};
+        JComboBox<String> comboMes = new JComboBox<>(meses);
+
+        JComboBox<Integer> comboAnio = new JComboBox<>();
+        int anioActual = Calendar.getInstance().get(Calendar.YEAR);
+        for (int i = anioActual; i >= anioActual - 3; i--) {
+            comboAnio.addItem(i);
+        }
+
+        Calendar cal = Calendar.getInstance();
+        comboMes.setSelectedIndex(cal.get(Calendar.MONTH));
+
+        JButton btnBuscar = new JButton("🔍 Buscar");
+
+        panelSuperior.add(new JLabel("Mes:"));
+        panelSuperior.add(comboMes);
+        panelSuperior.add(new JLabel("Año:"));
+        panelSuperior.add(comboAnio);
+        panelSuperior.add(btnBuscar);
+
+        panel.add(panelSuperior, BorderLayout.NORTH);
+
+        // Área de texto
+        JTextArea textArea = new JTextArea();
+        textArea.setFont(new Font("Monospaced", Font.BOLD, 13));
+        textArea.setEditable(false);
+
+        JScrollPane scrollPane = new JScrollPane(textArea);
+        panel.add(scrollPane, BorderLayout.CENTER);
+
+        // Panel inferior con botones
+        JPanel panelInferior = new JPanel(new BorderLayout());
+        JLabel lblTotal = new JLabel("TOTAL DEL MES: $0.00");
+        lblTotal.setFont(new Font("Arial", Font.BOLD, 18));
+        lblTotal.setHorizontalAlignment(SwingConstants.CENTER);
+
+        JButton btnCerrarMes = new JButton("💾 Cerrar Mes");
+        btnCerrarMes.setBackground(new Color(244, 67, 54));
+        btnCerrarMes.setForeground(Color.WHITE);
+
+        panelInferior.add(lblTotal, BorderLayout.CENTER);
+        panelInferior.add(btnCerrarMes, BorderLayout.SOUTH);
+        panel.add(panelInferior, BorderLayout.SOUTH);
+
+        btnBuscar.addActionListener(e -> {
+            try {
+                Connection con = DriverManager.getConnection("jdbc:mysql://localhost:3306/los_troncos", "root", "");
+
+                int mesSeleccionado = comboMes.getSelectedIndex() + 1;
+                int anioSeleccionado = (Integer) comboAnio.getSelectedItem();
+
+                String sql = "SELECT fecha, total_dia, mesas_atendidas FROM resumenes_mensuales " +
+                        "WHERE mes = ? AND anio = ? ORDER BY fecha";
+
+                PreparedStatement ps = con.prepareStatement(sql);
+                ps.setInt(1, mesSeleccionado);
+                ps.setInt(2, anioSeleccionado);
+                ResultSet rs = ps.executeQuery();
+
+                StringBuilder resumen = new StringBuilder();
+                SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy");
+
+                resumen.append("═══════════════════════════════════════\n");
+                resumen.append("    RESUMEN MENSUAL\n");
+                resumen.append("    ").append(comboMes.getSelectedItem()).append(" ").append(anioSeleccionado).append("\n");
+                resumen.append("═══════════════════════════════════════\n\n");
+
+                double totalMes = 0;
+                int diasConVentas = 0;
+                int totalMesasAtendidas = 0;
+
+                while (rs.next()) {
+                    Date fecha = rs.getDate("fecha");
+                    double totalDia = rs.getDouble("total_dia");
+                    int mesasAtendidas = rs.getInt("mesas_atendidas");
+
+                    resumen.append(String.format("%s ........ $%.2f (%d mesas)\n",
+                            sdf.format(fecha), totalDia, mesasAtendidas));
+
+                    totalMes += totalDia;
+                    diasConVentas++;
+                    totalMesasAtendidas += mesasAtendidas;
+                }
+
+                if (diasConVentas == 0) {
+                    resumen.append("\n⚠️  No hay ventas en este mes\n\n");
+                }
+
+                resumen.append("\n───────────────────────────────────────\n");
+                resumen.append(String.format("Días con ventas: %d\n", diasConVentas));
+                resumen.append(String.format("Total mesas: %d\n", totalMesasAtendidas));
+                resumen.append(String.format("Promedio diario: $%.2f\n", diasConVentas > 0 ? totalMes / diasConVentas : 0));
+                resumen.append("═══════════════════════════════════════");
+
+                textArea.setText(resumen.toString());
+                lblTotal.setText(String.format("TOTAL DEL MES: $%.2f", totalMes));
+
+                btnCerrarMes.setEnabled(diasConVentas > 0);
+
+                final double totalMesFinal = totalMes;
+                final int mesSeleccionadoFinal = mesSeleccionado;
+                final int anioSeleccionadoFinal = anioSeleccionado;
+
+                btnCerrarMes.addActionListener(ev -> {
+                    int confirm = JOptionPane.showConfirmDialog(frame,
+                            "¿Cerrar el mes?\n" +
+                                    "Se eliminarán todos los resúmenes diarios de este mes.\n" +
+                                    "Total del mes: $" + String.format("%.2f", totalMesFinal),
+                            "Confirmar Cierre de Mes",
+                            JOptionPane.YES_NO_OPTION,
+                            JOptionPane.WARNING_MESSAGE);
+
+                    if (confirm == JOptionPane.YES_OPTION) {
+                        try {
+                            Connection conDelete = DriverManager.getConnection("jdbc:mysql://localhost:3306/los_troncos", "root", "");
+
+                            String sqlDelete = "DELETE FROM resumenes_mensuales WHERE mes = ? AND anio = ?";
+                            PreparedStatement psDelete = conDelete.prepareStatement(sqlDelete);
+                            psDelete.setInt(1, mesSeleccionadoFinal);
+                            psDelete.setInt(2, anioSeleccionadoFinal);
+                            int filasEliminadas = psDelete.executeUpdate();
+                            psDelete.close();
+                            conDelete.close();
+
+                            JOptionPane.showMessageDialog(frame,
+                                    "Mes cerrado correctamente.\n" +
+                                            filasEliminadas + " días eliminados.\n" +
+                                            "Total del mes: $" + String.format("%.2f", totalMesFinal),
+                                    "Éxito",
+                                    JOptionPane.INFORMATION_MESSAGE);
+
+                            frame.dispose();
+
+                        } catch (Exception ex) {
+                            ex.printStackTrace();
+                            JOptionPane.showMessageDialog(frame,
+                                    "Error: " + ex.getMessage(),
+                                    "Error",
+                                    JOptionPane.ERROR_MESSAGE);
+                        }
+                    }
+                });
+
+                rs.close();
+                ps.close();
+                con.close();
+
+            } catch (Exception ex) {
+                ex.printStackTrace();
+                JOptionPane.showMessageDialog(frame,
+                        "Error: " + ex.getMessage(),
+                        "Error",
+                        JOptionPane.ERROR_MESSAGE);
+            }
+        });
+
+        frame.add(panel);
+        frame.setVisible(true);
+
+        btnBuscar.doClick();
+    }
+
+    // Clase auxiliar para almacenar datos de cada mesa
+    private class DatosMesa {
+        int numeroMesa;
+        List<String> items;
+        double total;
+
+        DatosMesa(int numeroMesa, List<String> items, double total) {
+            this.numeroMesa = numeroMesa;
+            this.items = items;
+            this.total = total;
+        }
+    }
+
+    // Método para imprimir el resumen mensual
+    private void imprimirResumenMensual(String mesAnio, List<DatosMesa> datosMesas, double totalGeneral) {
+        PrinterJob job = PrinterJob.getPrinterJob();
+
+        // Configurar formato de página para 48mm
+        PageFormat pf = job.defaultPage();
+        Paper paper = pf.getPaper();
+
+        double width = 48 * 2.834645669;  // 48mm
+        double height = 842;
+
+        paper.setSize(width, height);
+        paper.setImageableArea(0, 0, width, height);
+        pf.setPaper(paper);
+        pf.setOrientation(PageFormat.PORTRAIT);
+
+        job.setPrintable(new ResumenMensualPrintable(mesAnio, datosMesas, totalGeneral), pf);
+
+        if (job.printDialog()) {
+            try {
+                job.print();
+                JOptionPane.showMessageDialog(this,
+                        "Resumen mensual impreso correctamente.",
+                        "Éxito", JOptionPane.INFORMATION_MESSAGE);
+            } catch (PrinterException ex) {
+                JOptionPane.showMessageDialog(this,
+                        "Error al imprimir: " + ex.getMessage(),
+                        "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        }
+    }
+
+    // Clase interna para imprimir el resumen mensual
+    private class ResumenMensualPrintable implements Printable {
+        private String mesAnio;
+        private List<DatosMesa> datosMesas;
+        private double totalGeneral;
+
+        public ResumenMensualPrintable(String mesAnio, List<DatosMesa> datosMesas, double totalGeneral) {
+            this.mesAnio = mesAnio;
+            this.datosMesas = datosMesas;
+            this.totalGeneral = totalGeneral;
+        }
+
+        @Override
+        public int print(Graphics g, PageFormat pf, int page) throws PrinterException {
+            if (page > 0) {
+                return NO_SUCH_PAGE;
+            }
+
+            Graphics2D g2d = (Graphics2D) g;
+            g2d.translate(pf.getImageableX(), pf.getImageableY());
+
+            // Fuentes optimizadas para 48mm (igual que TicketPrintable)
+            Font fTitulo = new Font("Courier New", Font.BOLD, 10);
+            Font fNormal = new Font("Courier New", Font.PLAIN, 8);
+            Font fPequena = new Font("Courier New", Font.PLAIN, 7);
+            Font fTotal = new Font("Courier New", Font.BOLD, 10);
+
+            int y = 10;
+            int lineHeight = 11;
+            int margen = 3;
+            int anchoTicket = (int) pf.getImageableWidth();
+
+            // === ENCABEZADO ===
+            g2d.setFont(fTitulo);
+            String titulo = "LOS TRONCOS RESTO BAR";
+            int anchoTitulo = g2d.getFontMetrics().stringWidth(titulo);
+            g2d.drawString(titulo, (anchoTicket - anchoTitulo) / 2, y);
+            y += lineHeight;
+
+            // Subtítulo
+            g2d.setFont(fNormal);
+            String subtitulo = "RESUMEN MENSUAL";
+            int anchoSubtitulo = g2d.getFontMetrics().stringWidth(subtitulo);
+            g2d.drawString(subtitulo, (anchoTicket - anchoSubtitulo) / 2, y);
+            y += lineHeight;
+
+            // Mes y año
+            g2d.setFont(fPequena);
+            String mesAnioUpper = mesAnio.toUpperCase();
+            int anchoMes = g2d.getFontMetrics().stringWidth(mesAnioUpper);
+            g2d.drawString(mesAnioUpper, (anchoTicket - anchoMes) / 2, y);
+            y += lineHeight;
+
+            // Línea separadora
+            g2d.setFont(fNormal);
+            g2d.drawString("==========================", margen, y);
+            y += lineHeight;
+
+            // === DATOS POR MESA ===
+            for (DatosMesa mesa : datosMesas) {
+                // Encabezado de mesa
+                g2d.drawString("MESA " + mesa.numeroMesa, margen, y);
+                y += lineHeight;
+
+                // Items de la mesa
+                g2d.setFont(fPequena);
+                for (String item : mesa.items) {
+                    if (item.length() > 26) {
+                        item = item.substring(0, 23) + "...";
+                    }
+                    g2d.drawString(item, margen + 2, y);
+                    y += lineHeight - 1;
+                }
+
+                // Total de la mesa
+                g2d.setFont(fNormal);
+                String totalMesaStr = String.format("Total: $%.2f", mesa.total);
+                int anchoTotalMesa = g2d.getFontMetrics().stringWidth(totalMesaStr);
+                g2d.drawString(totalMesaStr, anchoTicket - anchoTotalMesa - margen, y);
+                y += lineHeight;
+
+                // Línea separadora entre mesas
+                g2d.drawString("--------------------------", margen, y);
+                y += lineHeight;
+            }
+
+            // Línea separadora antes del total
+            g2d.drawString("==========================", margen, y);
+            y += lineHeight;
+
+            // === TOTAL MENSUAL ===
+            g2d.setFont(fTotal);
+            String textoTotal = "TOTAL MENSUAL:";
+            g2d.drawString(textoTotal, margen, y);
+            y += lineHeight;
+
+            String valorTotal = String.format("$%.2f", totalGeneral);
+            int anchoValorTotal = g2d.getFontMetrics().stringWidth(valorTotal);
+            g2d.drawString(valorTotal, (anchoTicket - anchoValorTotal) / 2, y);
+            y += lineHeight + 5;
+
+            // Línea separadora final
+            g2d.setFont(fNormal);
+            g2d.drawString("==========================", margen, y);
+            y += lineHeight;
+
+            // === PIE DE PÁGINA ===
+            g2d.setFont(fPequena);
+            String gracias = "Gracias por su visita";
+            int anchoGracias = g2d.getFontMetrics().stringWidth(gracias);
+            g2d.drawString(gracias, (anchoTicket - anchoGracias) / 2, y);
+            y += lineHeight - 2;
+
+            String vuelva = "Vuelva pronto!";
+            int anchoVuelva = g2d.getFontMetrics().stringWidth(vuelva);
+            g2d.drawString(vuelva, (anchoTicket - anchoVuelva) / 2, y);
+
+            return PAGE_EXISTS;
         }
     }
 
@@ -507,8 +1145,8 @@ public class MenuPrincipal extends JFrame {
 
         btn.repaint();
     }
-    // java
-    // Archivo: `src/main/java/MenuPrincipal.java`
+
+    // Sobrecarga para actualizar estado con parámetro explícito
     public void actualizarEstadoMesa(int numeroMesa, boolean ocupada) {
         if (numeroMesa < 1 || numeroMesa > mesas.length) return;
 

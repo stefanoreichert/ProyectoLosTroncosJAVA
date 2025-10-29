@@ -5,7 +5,7 @@ import java.sql.*;
 
 // Clase para gestionar todos los pedidos de todas las mesas en memoria
 public class ModeloPedidos {
-    private static final ConcurrentHashMap<Integer, List<ItemPedido>> pedidosPorMesa = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Integer, List<ItemPedido>> pedidosPorMesa = new ConcurrentHashMap<>(); // Mapa de mesa -> lista de items de pedido
 
     // Inicializar el mapa con listas vacías para cada mesa (asumimos 40)
     static {
@@ -49,7 +49,7 @@ public class ModeloPedidos {
         pedidosPorMesa.put(numeroMesa, new ArrayList<>());
     }
 
-    // Elimina todos los pedidos de una mesa
+    // Elimina todos los pedidos de una mesa (específico para el botón "Borrar Pedido")
     public static void borrarPedidoMesa(int numeroMesa) {
         pedidosPorMesa.put(numeroMesa, new ArrayList<>());
 
@@ -59,8 +59,7 @@ public class ModeloPedidos {
 
     }
 
-    // Verifica si la mesa tiene algún pedido pendiente (para cambiar el color del botón)
-// Verifica si la mesa tiene algún pedido pendiente en la BASE DE DATOS
+    // Verifica si la mesa tiene algún pedido pendiente en la BASE DE DATOS (para cambiar el color del botón)
     public static boolean tienePedido(int numeroMesa) {
         try {
             Connection con = DriverManager.getConnection("jdbc:mysql://localhost:3306/los_troncos", "root", "");
@@ -86,7 +85,6 @@ public class ModeloPedidos {
         }
     }
 
-
     // Retorna el total del pedido de la mesa
     public static double getTotalMesa(int numeroMesa) {
         List<ItemPedido> pedido = pedidosPorMesa.get(numeroMesa);
@@ -100,6 +98,7 @@ public class ModeloPedidos {
         }
         return total;
     }
+
     // Agregar este método a la clase ModeloPedidos
     public static List<ItemPedido> cargarPedidoDesdeBD(int numeroMesa) {
         List<ItemPedido> pedido = new ArrayList<>();
