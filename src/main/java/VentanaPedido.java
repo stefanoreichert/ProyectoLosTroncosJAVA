@@ -27,7 +27,7 @@ public class VentanaPedido extends JDialog {
     private DefaultTableModel modeloTablaProductos;
     private JTable tablaProductos;
 
-    // Componentes de la interfaz gráfica
+    // Controles de la interfaz gráfica de usuario.
     private JTextField txtBusquedaRapida;
     private JLabel lblResultadoBusqueda;
     private JComboBox<ComboItem> cmbTipo;
@@ -507,7 +507,6 @@ public class VentanaPedido extends JDialog {
             }
         }
     }
-
     private class TicketPrintable implements Printable {
         private final List<ItemPedido> items;
 
