@@ -11,6 +11,8 @@ import java.awt.print.PrinterException;
 import java.awt.print.PrinterJob;
 import java.sql.*;
 import java.text.SimpleDateFormat;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
@@ -22,6 +24,8 @@ public class MenuPrincipal extends JFrame {
     private JLabel lblOcupadas;
     private int libres = 40;
     private int ocupadas = 0;
+    private java.time.LocalDateTime[] horaPrimerPedido = new java.time.LocalDateTime[40];
+    private java.time.format.DateTimeFormatter formato = java.time.format.DateTimeFormatter.ofPattern("HH:mm");
 
     public MenuPrincipal() {
         setTitle("Sistema Restaurante - Mesas");
@@ -51,7 +55,21 @@ public class MenuPrincipal extends JFrame {
         for (int i = 0; i < 40; i++) {
             final int numeroMesa = i + 1;
 
-            mesas[i] = new JButton("Mesa " + (i + 1));
+            // Obtener hora del primer pedido desde la BD
+            String horaTexto = "";
+            try {
+                LocalDateTime horaDesdeDB = ModeloPedidos.getHoraPrimerPedido(numeroMesa);
+                if (horaDesdeDB != null) {
+                    horaPrimerPedido[i] = horaDesdeDB;
+                    horaTexto = "\n" + horaDesdeDB.format(formato);
+                }
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
+
+            // Crear botón con HTML para mostrar texto en dos líneas
+            String textoBoton = "<html><center>Mesa " + numeroMesa + horaTexto + "</center></html>";
+            mesas[i] = new JButton(textoBoton);
 
             // Inicializar el color según el estado en ModeloPedidos
             if (ModeloPedidos.tienePedido(numeroMesa)) {
@@ -65,6 +83,7 @@ public class MenuPrincipal extends JFrame {
             // Configuración visual del botón de la mesa
             mesas[i].setOpaque(true);
             mesas[i].setBorderPainted(true);
+            mesas[i].setFont(new Font("Arial", Font.BOLD, 14));
 
             // Click simple: abrir mesa
             mesas[i].addActionListener(new ActionListener() {
@@ -97,7 +116,7 @@ public class MenuPrincipal extends JFrame {
         lblLibres = new JLabel("Mesas libres: " + libres);
         lblOcupadas = new JLabel("Mesas ocupadas: " + ocupadas);
 
-        // Etiqueta de ayuda para doble clik
+        // Etiqueta de ayuda para doble click
         JLabel lblAyuda = new JLabel("<html><br>Doble click:<br>Ver pedido</html>");
         lblAyuda.setFont(new Font("Arial", Font.ITALIC, 11));
         lblAyuda.setForeground(Color.GRAY);
@@ -962,7 +981,6 @@ public class MenuPrincipal extends JFrame {
         }
     }
 
-    // Método para imprimir el resumen mensual
     private void imprimirResumenMensual(String mesAnio, List<DatosMesa> datosMesas, double totalGeneral) {
         PrinterJob job = PrinterJob.getPrinterJob();
 
@@ -1130,6 +1148,23 @@ public class MenuPrincipal extends JFrame {
             btn.putClientProperty("estado", "libre");
         }
 
+        try {
+            java.time.LocalDateTime hora = ModeloPedidos.getHoraPrimerPedido(numeroMesa);
+            if (hora != null) {
+                // 'formato' debe ser un DateTimeFormatter definido en la clase (ej: "HH:mm")
+                btn.setText("<html>Mesa " + numeroMesa + "<br>" + hora.format(formato) + "</html>");
+
+            } else {
+                // si no hay hora registrada mostramos el texto simple
+                btn.setText("Mesa " + numeroMesa);
+            }
+        } catch (Exception ex) {
+            // si por alguna razón no existe el método en ModeloPedidos o falla,
+            // dejamos el texto por defecto para no romper la UI
+            btn.setText("Mesa " + numeroMesa);
+        }
+        // --- fin añadido ---
+
         // Actualizar contadores de mesas libres y ocupadas
         int totLibres = 0;
         int totOcupadas = 0;
@@ -1146,34 +1181,5 @@ public class MenuPrincipal extends JFrame {
         btn.repaint();
     }
 
-    // Sobrecarga para actualizar estado con parámetro explícito
-    public void actualizarEstadoMesa(int numeroMesa, boolean ocupada) {
-        if (numeroMesa < 1 || numeroMesa > mesas.length) return;
-
-        JButton btn = mesas[numeroMesa - 1];
-        if (ocupada) {
-            btn.setBackground(Color.RED);
-            btn.putClientProperty("estado", "ocupada");
-        } else {
-            btn.setBackground(Color.GREEN);
-            btn.putClientProperty("estado", "libre");
-        }
-
-        // Recalcular contadores usando la propiedad 'estado'
-        int totLibres = 0, totOcupadas = 0;
-        for (JButton b : mesas) {
-            Object est = b.getClientProperty("estado");
-            if ("ocupada".equals(est)) totOcupadas++;
-            else totLibres++;
-        }
-        libres = totLibres;
-        ocupadas = totOcupadas;
-
-        lblLibres.setText("Mesas libres: " + libres);
-        lblOcupadas.setText("Mesas ocupadas: " + ocupadas);
-
-        // Asegurar repintado en EDT
-        SwingUtilities.invokeLater(btn::repaint);
-    }
 
 }

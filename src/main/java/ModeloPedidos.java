@@ -2,10 +2,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.sql.*;
+import java.time.LocalDateTime;
+import java.util.Map;
+
 
 // Clase para gestionar todos los pedidos de todas las mesas en memoria
 public class ModeloPedidos {
     private static final ConcurrentHashMap<Integer, List<ItemPedido>> pedidosPorMesa = new ConcurrentHashMap<>(); // Mapa de mesa -> lista de items de pedido
+    private static final Map<Integer, LocalDateTime> horaPrimerPedido = new ConcurrentHashMap<>();
 
     // Inicializar el mapa con listas vacías para cada mesa (asumimos 40)
     static {
@@ -25,12 +29,10 @@ public class ModeloPedidos {
         if (pedido == null) {
             pedido = new ArrayList<>();
             pedidosPorMesa.put(numeroMesa, pedido);
-
-
-            System.out.println("DEBUG: agregarOActualizarItem mesa=" + numeroMesa + " producto=" + newItem.getIdProducto() + " cantidad=" + newItem.getCantidad());
-            System.out.println("DEBUG: tienePedido despues add=" + ModeloPedidos.tienePedido(numeroMesa));
-
         }
+
+        // si la lista estaba vacía antes de agregar, vamos a registrar la hora
+        boolean estabaVacio = pedido.isEmpty();
 
         // Buscar si el producto ya existe (por ID)
         for (ItemPedido item : pedido) {
@@ -42,23 +44,25 @@ public class ModeloPedidos {
 
         // Si no existe, lo agrega
         pedido.add(newItem);
+
+        // Si estaba vacía y ahora agregamos el primer item, registramos la hora
+        if (estabaVacio) {
+            registrarPrimerPedido(numeroMesa);
+        }
     }
 
-    // Elimina un pedido completo de una mesa (ahora limpia la lista en vez de remover la key)
+    // Elimina todos los pedidos de una mesa
     public static void borrarPedido(int numeroMesa) {
         pedidosPorMesa.put(numeroMesa, new ArrayList<>());
+        // removemos la hora registrada de la mesa
+        horaPrimerPedido.remove(numeroMesa);
     }
 
     // Elimina todos los pedidos de una mesa (específico para el botón "Borrar Pedido")
     public static void borrarPedidoMesa(int numeroMesa) {
         pedidosPorMesa.put(numeroMesa, new ArrayList<>());
-
-
-        System.out.println("DEBUG: borrarPedidoMesa mesa=" + numeroMesa);
-        System.out.println("DEBUG: tienePedido despues borrar=" + ModeloPedidos.tienePedido(numeroMesa));
-
+        horaPrimerPedido.remove(numeroMesa);
     }
-
     // Verifica si la mesa tiene algún pedido pendiente en la BASE DE DATOS (para cambiar el color del botón)
     public static boolean tienePedido(int numeroMesa) {
         try {
@@ -141,6 +145,41 @@ public class ModeloPedidos {
         return pedido;
     }
 
+    //
+    public static void registrarPrimerPedido(int numeroMesa) {
+        // Si ya está registrada, no hacemos nada
+        horaPrimerPedido.computeIfAbsent(numeroMesa, k -> LocalDateTime.now());
+    }
+
+    //
+    // Obtiene la hora del primer pedido de una mesa desde la BD
+    public static LocalDateTime getHoraPrimerPedido(int numeroMesa) {
+        try {
+            Connection con = DriverManager.getConnection("jdbc:mysql://localhost:3306/los_troncos", "root", "");
+            String sql = "SELECT MIN(hora_pedido) as primera_hora FROM `mesa pedido` WHERE mesa = ?";
+            PreparedStatement ps = con.prepareStatement(sql);
+            ps.setInt(1, numeroMesa);
+            ResultSet rs = ps.executeQuery();
+
+            LocalDateTime hora = null;
+            if (rs.next()) {
+                Timestamp ts = rs.getTimestamp("primera_hora");
+                if (ts != null) {
+                    hora = ts.toLocalDateTime();
+                }
+            }
+
+            rs.close();
+            ps.close();
+            con.close();
+
+            return hora;
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
 
 
 }

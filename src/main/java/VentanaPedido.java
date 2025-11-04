@@ -82,7 +82,7 @@ public class VentanaPedido extends JDialog {
 
         // Título de la sección
         JLabel lblTitulo = new JLabel("MESA " + numeroMesa + " - BÚSQUEDA DE PRODUCTOS");
-        lblTitulo.setFont(new Font("Arial", Font.BOLD, 18));
+        lblTitulo.setFont(new Font("Arial", Font.BOLD, 38));
 
         // Panel que contiene todos los controles de búsqueda
         JPanel panelBusqueda = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
@@ -1041,7 +1041,7 @@ public class VentanaPedido extends JDialog {
         cargarPedidoMesa();
         actualizarTotal();
         if (menuPrincipal != null) {
-            menuPrincipal.actualizarEstadoMesa(numeroMesa, true);
+            menuPrincipal.actualizarEstadoMesa(numeroMesa);
         }
     }
 
@@ -1107,7 +1107,7 @@ public class VentanaPedido extends JDialog {
 
             // ← AGREGAR ESTAS LÍNEAS AQUÍ
             if (menuPrincipal != null) {
-                menuPrincipal.actualizarEstadoMesa(numeroMesa, false);
+                menuPrincipal.actualizarEstadoMesa(numeroMesa);
             }
 
             JOptionPane.showMessageDialog(this, "Mesa cerrada");
