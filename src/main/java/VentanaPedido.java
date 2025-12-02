@@ -1,22 +1,22 @@
-import javax.swing.*;
-import javax.swing.table.DefaultTableModel;
-import javax.swing.table.DefaultTableCellRenderer;
-import javax.swing.event.TableModelEvent;
-import javax.swing.event.TableModelListener;
-import java.awt.*;
-import java.awt.event.*;
-import java.awt.print.*;
-import java.sql.*;
-import java.text.SimpleDateFormat;
-import java.util.List;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.Date;
+import javax.swing.*; // componentes gráficos
+import javax.swing.table.DefaultTableModel; // modelo de tabla
+import javax.swing.table.DefaultTableCellRenderer; // diseño celdas tabla
+import javax.swing.event.TableModelEvent; // evento cambio tabla
+import javax.swing.event.TableModelListener; // escucha cambios tabla
+import java.awt.*; // colores y fuentes
+import java.awt.event.*; // eventos de botones, mouse, teclas
+import java.awt.print.*; // imprimir
+import java.sql.*; // base de datos
+import java.text.SimpleDateFormat; // formatear fechas
+import java.util.List; // lista
+import java.time.LocalDateTime; // fecha y hora actual
+import java.time.format.DateTimeFormatter; // formato fecha/hora
+import java.util.Date; // fecha clásica
+import static java.awt.print.Printable.PAGE_EXISTS; // impresión
 
-import static java.awt.print.Printable.PAGE_EXISTS;
-
+// clase que representa la ventana de gestión de pedidos para una mesa específica
 public class VentanaPedido extends JDialog {
-    // Variables de instancia: guardan la información de la ventana
+    // Atributos de la clase
     private int numeroMesa;
     private MenuPrincipal menuPrincipal;
     private Connection conexion;
@@ -42,26 +42,32 @@ public class VentanaPedido extends JDialog {
 
     // Constructor: se ejecuta cuando se crea una nueva ventana de pedido
     public VentanaPedido(MenuPrincipal parent, int mesa) {
-        super(parent, "Mesa " + mesa + " - Gestión de Pedido", true);
+        super(parent, "Mesa " + mesa + " - Gestión de Pedido", true); // modal
         this.menuPrincipal = parent;
         this.numeroMesa = mesa;
 
-        // Inicializar todo en orden
+        // Inicializar componentes y cargar datos
         initComponents();
-        cargarTipos();
+
+        // Cargar primero las categorías y luego los tipos según la categoría seleccionada
         cargarCategorias();
+        ComboItem selCat = (ComboItem) cmbCategoria.getSelectedItem();
+        int idCatInicial = selCat == null ? 0 : selCat.getValue();
+        cargarTipos(idCatInicial);
+
+        // Cargar productos y pedido de la mesa
         cargarProductosDisponibles("", 0, 0);
         cargarPedidoMesa();
         actualizarTotal();
     }
 
-    // Configura el tamaño y diseño básico de la ventana
+    // Configura el tamaño y diseño básico de la ventana de pedido
     private void initComponents() {
         setSize(1400, 800);
         setLocationRelativeTo(null); // Centra la ventana en la pantalla
-        setDefaultCloseOperation(DISPOSE_ON_CLOSE);
+        setDefaultCloseOperation(DISPOSE_ON_CLOSE); // Cerrar al salir
 
-        JPanel mainPanel = new JPanel(new BorderLayout(10, 10));
+        JPanel mainPanel = new JPanel(new BorderLayout(10, 10)); // crear panel principal
         mainPanel.setBackground(Color.WHITE);
         mainPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
@@ -88,23 +94,25 @@ public class VentanaPedido extends JDialog {
         JPanel panelBusqueda = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
         panelBusqueda.setOpaque(false);
 
-        // ComboBox de Tipo
-        JLabel lblTipo = new JLabel("Tipo:");
-        lblTipo.setFont(new Font("Arial", Font.PLAIN, 14));
-        cmbTipo = new JComboBox<ComboItem>();
-        cmbTipo.setFont(new Font("Arial", Font.PLAIN, 14));
-        cmbTipo.setPreferredSize(new Dimension(120, 30));
-
-        // ComboBox de Categoría
+        // ComboBox de Categoría de producto
         JLabel lblCategoria = new JLabel("Categoría:");
         lblCategoria.setFont(new Font("Arial", Font.PLAIN, 14));
         cmbCategoria = new JComboBox<ComboItem>();
         cmbCategoria.setFont(new Font("Arial", Font.PLAIN, 14));
         cmbCategoria.setPreferredSize(new Dimension(150, 30));
 
+        // ComboBox de Tipo de producto (dependiente de la categoría)
+        JLabel lblTipo = new JLabel("Tipo:");
+        lblTipo.setFont(new Font("Arial", Font.PLAIN, 14));
+        cmbTipo = new JComboBox<ComboItem>();
+        cmbTipo.setFont(new Font("Arial", Font.PLAIN, 14));
+        cmbTipo.setPreferredSize(new Dimension(120, 30));
+
         // Campo de texto para buscar productos
         JLabel lblBuscar = new JLabel("Producto:");
         lblBuscar.setFont(new Font("Arial", Font.PLAIN, 14));
+
+        // campo de texto para búsqueda rápida
         txtBusquedaRapida = new JTextField(20);
         txtBusquedaRapida.setFont(new Font("Arial", Font.PLAIN, 14));
         txtBusquedaRapida.setPreferredSize(new Dimension(200, 30));
@@ -126,11 +134,11 @@ public class VentanaPedido extends JDialog {
         lblResultadoBusqueda.setFont(new Font("Arial", Font.ITALIC, 12));
         lblResultadoBusqueda.setForeground(Color.BLUE);
 
-        // Agregar todos los componentes al panel
-        panelBusqueda.add(lblTipo);
-        panelBusqueda.add(cmbTipo);
+        // Agregar en el orden: Categoría -> Tipo -> Producto -> Cantidad -> Botón
         panelBusqueda.add(lblCategoria);
         panelBusqueda.add(cmbCategoria);
+        panelBusqueda.add(lblTipo);
+        panelBusqueda.add(cmbTipo);
         panelBusqueda.add(lblBuscar);
         panelBusqueda.add(txtBusquedaRapida);
         panelBusqueda.add(lblCant);
@@ -141,23 +149,26 @@ public class VentanaPedido extends JDialog {
         panel.add(lblTitulo, BorderLayout.NORTH);
         panel.add(panelBusqueda, BorderLayout.CENTER);
 
-        // Agregar eventos: cuando cambia el tipo o categoría, se filtran los productos
+        // Cuando se selecciona una categoría, recargar los tipos disponibles para esa categoría
+        cmbCategoria.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                ComboItem sel = (ComboItem) cmbCategoria.getSelectedItem(); // obtener lo seleccionado
+                int idCat = sel == null ? 0 : sel.getValue(); // obtener id de categoría
+                cargarTipos(idCat); // // carga el combo de tipos según la categoría elegida
+                filtrarProductos(); // filtra la tabla de productos
+            }
+        });
+
+        // Mantener listeners para filtrado y búsqueda rápida
         cmbTipo.addItemListener(new ItemListener() {
-            public void itemStateChanged(ItemEvent e) {
-                if(e.getStateChange() == ItemEvent.SELECTED) {
-                    filtrarProductos();
+            public void itemStateChanged(ItemEvent e) { // cuando cambia el ítem seleccionado
+                if (e.getStateChange() == ItemEvent.SELECTED) { // si es seleccionado
+                    filtrarProductos(); // filtra la tabla de productos
                 }
             }
         });
 
-        cmbCategoria.addItemListener(new ItemListener() {
-            public void itemStateChanged(ItemEvent e) {
-                if(e.getStateChange() == ItemEvent.SELECTED) {
-                    filtrarProductos();
-                }
-            }
-        });
-
+        // Configurar búsqueda rápida con teclado y botón
         configurarBusquedaRapida(btnAgregarRapido);
 
         return panel;
@@ -165,12 +176,13 @@ public class VentanaPedido extends JDialog {
 
     // Configura el comportamiento de búsqueda rápida con teclado
     private void configurarBusquedaRapida(JButton btnAgregar) {
+
         // Evento cuando se presiona una tecla en el campo de búsqueda
-        txtBusquedaRapida.addKeyListener(new KeyAdapter() {
+        txtBusquedaRapida.addKeyListener(new KeyAdapter() { // "escucha" de teclado
             public void keyPressed(KeyEvent e) {
                 // Flecha arriba: selecciona el producto encontrado
-                if(e.getKeyCode() == KeyEvent.VK_UP) {
-                    buscarYSeleccionarProducto();
+                if(e.getKeyCode() == KeyEvent.VK_UP) { // flecha arriba
+                    buscarYSeleccionarProducto(); // buscar y seleccionar producto
                 }
                 // Enter: agrega el producto seleccionado
                 else if(e.getKeyCode() == KeyEvent.VK_ENTER) {
@@ -178,8 +190,9 @@ public class VentanaPedido extends JDialog {
                 }
             }
 
+            // Filtra productos al soltar una tecla (excepto ↑ y Enter)
             public void keyReleased(KeyEvent e) {
-                // Al soltar cualquier otra tecla, filtra los productos
+                // Al soltar cualquier otra tecla, filtra los productos(mientras se va escribiendo)
                 if(e.getKeyCode() != KeyEvent.VK_UP && e.getKeyCode() != KeyEvent.VK_ENTER) {
                     filtrarProductos();
                 }
@@ -265,7 +278,7 @@ public class VentanaPedido extends JDialog {
                 0, 0, new Font("Arial", Font.BOLD, 14)
         ));
 
-        // Crear modelo de tabla con 4 columnas
+        // Crear modelo de tabla con 4 columnas para el listado de productos
         modeloTablaProductos = new DefaultTableModel(
                 new Object[]{"ID", "Producto", "Stock", "Precio"}, 0) {
 
@@ -276,13 +289,17 @@ public class VentanaPedido extends JDialog {
 
             // Define el tipo de dato de cada columna
             public Class<?> getColumnClass(int columnIndex) {
-                if(columnIndex == 2) {
-                    return Integer.class; // Columna Stock
+                Class<?> tipoColumna; // Variable para almacenar el tipo de retorno
+
+                if (columnIndex == 2) {
+                    tipoColumna = Integer.class; // Columna Stock
+                } else if (columnIndex == 3) {
+                    tipoColumna = Double.class; // Columna Precio
+                } else {
+                    tipoColumna = super.getColumnClass(columnIndex); // Tipo por defecto
                 }
-                if(columnIndex == 3) {
-                    return Double.class; // Columna Precio
-                }
-                return super.getColumnClass(columnIndex);
+
+                return tipoColumna; // Un solo punto de retorno
             }
         };
 
@@ -320,9 +337,13 @@ public class VentanaPedido extends JDialog {
         btnEditarProducto.setFont(new Font("Arial", Font.PLAIN, 12));
         btnEliminarProducto.setFont(new Font("Arial", Font.PLAIN, 12));
 
-        panelCRUD.add(btnNuevoProducto);
-        panelCRUD.add(btnEditarProducto);
-        panelCRUD.add(btnEliminarProducto);
+        // Solo mostrar botones de CRUD si el usuario es ADMIN
+        Usuario usuarioActual = SesionUsuario.getInstancia().getUsuarioActual();
+        if (usuarioActual != null && usuarioActual.esAdmin()) {
+            panelCRUD.add(btnNuevoProducto);
+            panelCRUD.add(btnEditarProducto);
+            panelCRUD.add(btnEliminarProducto);
+        }
 
         // Eventos de los botones
         btnNuevoProducto.addActionListener(new ActionListener() {
@@ -652,16 +673,21 @@ public class VentanaPedido extends JDialog {
             }
 
             public Class<?> getColumnClass(int columnIndex) {
-                if(columnIndex == 2) {
-                    return Integer.class;
+                Class<?> tipoColumna; // Variable para almacenar el tipo de retorno
+
+                if (columnIndex == 2) {
+                    tipoColumna = Integer.class; // Columna Cantidad
+                } else if (columnIndex == 3 || columnIndex == 4) {
+                    tipoColumna = Double.class; // Columnas Precio y Subtotal
+                } else {
+                    tipoColumna = super.getColumnClass(columnIndex); // Tipo por defecto
                 }
-                if(columnIndex == 3 || columnIndex == 4) {
-                    return Double.class;
-                }
-                return super.getColumnClass(columnIndex);
+
+                return tipoColumna; //
             }
         };
 
+        // Crear tabla para mostrar el pedido
         tablaPedido = new JTable(modeloTablaPedido);
         configurarEstiloTabla(tablaPedido);
         tablaPedido.getColumnModel().getColumn(0).setMaxWidth(50);
@@ -717,6 +743,7 @@ public class VentanaPedido extends JDialog {
             }
         });
 
+        // Agregar la tabla dentro de un JScrollPane
         JScrollPane scrollPedido = new JScrollPane(tablaPedido);
 
         // Panel inferior con total y botones
@@ -781,15 +808,31 @@ public class VentanaPedido extends JDialog {
         }
     }
 
-    // Carga los tipos de productos desde la base de datos al ComboBox
-    private void cargarTipos() {
+    // Carga los tipos de productos desde la base de datos al ComboBox (filtrados por categoría)
+    private void cargarTipos(int categoriaId) {
         cmbTipo.removeAllItems();
         cmbTipo.addItem(new ComboItem("Todos", 0));
 
+        // Construir la consulta SQL
         try {
             Connection con = Conexion.GetConnection();
-            Statement st = con.createStatement();
-            ResultSet rs = st.executeQuery("SELECT id_tipo, nombre FROM tipo");
+            StringBuilder sql = new StringBuilder();
+            sql.append("SELECT DISTINCT t.id_tipo, t.nombre ");
+            sql.append("FROM tipo t ");
+            sql.append("JOIN productos p ON p.id_tipo = t.id_tipo ");
+            if (categoriaId > 0) {
+                sql.append("WHERE p.id_tipo_producto = ? ");
+            }
+            sql.append("ORDER BY t.nombre");
+
+            // Ejecutar la consulta
+            PreparedStatement ps = con.prepareStatement(sql.toString());
+            if (categoriaId > 0) {
+                ps.setInt(1, categoriaId);
+            }
+
+            // ejecutar la query
+            ResultSet rs = ps.executeQuery();
 
             while (rs.next()) {
                 String nombre = rs.getString("nombre");
@@ -798,7 +841,7 @@ public class VentanaPedido extends JDialog {
             }
 
             rs.close();
-            st.close();
+            ps.close();
             con.close();
 
         } catch (Exception e) {
@@ -811,16 +854,23 @@ public class VentanaPedido extends JDialog {
         cmbTipo.setSelectedIndex(0);
     }
 
+    // Sobrecarga para mantener compatibilidad con llamadas existentes
+    private void cargarTipos() {
+        cargarTipos(0);
+    }
+
     // Carga las categorías de productos desde la base de datos al ComboBox
     private void cargarCategorias() {
         cmbCategoria.removeAllItems();
         cmbCategoria.addItem(new ComboItem("Todas", 0));
 
+        // Conexión a la base de datos y consulta
         try {
             Connection con = DriverManager.getConnection("jdbc:mysql://localhost:3306/los_troncos", "root", "");
             Statement st = con.createStatement();
             ResultSet rs = st.executeQuery("SELECT id_tipo_producto, nombre FROM `tipo producto`");
 
+            // Agregar cada categoría al ComboBox
             while(rs.next()) {
                 String nombre = rs.getString("nombre");
                 int id = rs.getInt("id_tipo_producto");
@@ -836,8 +886,7 @@ public class VentanaPedido extends JDialog {
         }
     }
 
-    // Filtra los productos según tipo, categoría y texto de búsqueda
-    // Filtra los productos según tipo, categoría y texto de búsqueda
+    // Filtra los productos según categoría, tipo y texto de búsqueda
     private void filtrarProductos() {
         ComboItem seleccionadoTipo = (ComboItem) cmbTipo.getSelectedItem();
         ComboItem seleccionadoCat = (ComboItem) cmbCategoria.getSelectedItem();
@@ -852,7 +901,7 @@ public class VentanaPedido extends JDialog {
 
         modeloTablaProductos.setRowCount(0);
 
-        // CORRECCIÓN: usar id_tipo_producto en lugar de categoria_id
+        // Construir la consulta SQL con parámetros
         StringBuilder sql = new StringBuilder("SELECT id, nombre, stock, precio FROM productos WHERE nombre LIKE ?");
         if (idTipo > 0) {
             sql.append(" AND id_tipo = ?");
@@ -861,6 +910,7 @@ public class VentanaPedido extends JDialog {
             sql.append(" AND id_tipo_producto = ?");  // ← CORREGIDO
         }
 
+        // Ejecutar la consulta
         try {
             Connection con = Conexion.GetConnection();
             PreparedStatement ps = con.prepareStatement(sql.toString());
@@ -874,8 +924,10 @@ public class VentanaPedido extends JDialog {
                 ps.setInt(idx++, idCategoria);
             }
 
+            // ejecuta la query
             ResultSet rs = ps.executeQuery();
 
+            // Agregar resultados a la tabla
             while (rs.next()) {
                 Object[] fila = new Object[]{
                         rs.getInt("id"),
@@ -895,7 +947,7 @@ public class VentanaPedido extends JDialog {
         }
     }
 
-    // Carga productos disponibles con filtros simples (método alternativo)
+    // Carga productos disponibles con filtros simples (metodo alternativo)
     private void cargarProductosDisponibles(String filtro, int tipo, int categoria) {
         modeloTablaProductos.setRowCount(0);
         String sql = "SELECT id, nombre, stock, precio FROM productos WHERE nombre LIKE ?";
@@ -906,6 +958,7 @@ public class VentanaPedido extends JDialog {
             sql += " AND id_tipo_producto = " + categoria;
         }
 
+        // conexión y ejecución de la consulta
         try {
             Connection con = DriverManager.getConnection("jdbc:mysql://localhost:3306/los_troncos", "root", "");
             PreparedStatement ps = con.prepareStatement(sql);
@@ -935,6 +988,7 @@ public class VentanaPedido extends JDialog {
     private void cargarPedidoMesa() {
         modeloTablaPedido.setRowCount(0);
 
+        // Conexión y consulta
         try {
             Connection con = DriverManager.getConnection("jdbc:mysql://localhost:3306/los_troncos", "root", "");
             String sql = "SELECT p.id, p.nombre, mp.cantidad, mp.precio_unitario, p.precio as precio_original " +
@@ -989,6 +1043,7 @@ public class VentanaPedido extends JDialog {
             return;
         }
 
+        // Agregar o actualizar el producto en el pedido de la mesa
         try {
             Connection con = DriverManager.getConnection("jdbc:mysql://localhost:3306/los_troncos", "root", "");
 
@@ -1018,7 +1073,7 @@ public class VentanaPedido extends JDialog {
             rs.close();
             psCheck.close();
 
-            // Insertar o actualizar el pedido
+            // Insertar o actualizar el pedido usando ON DUPLICATE KEY UPDATE
             String sqlInsert = "INSERT INTO `mesa pedido`(mesa, producto_id, cantidad, precio_unitario) VALUES(?, ?, ?, ?) " +
                     "ON DUPLICATE KEY UPDATE cantidad = cantidad + ?, precio_unitario = ?";
             PreparedStatement ps = con.prepareStatement(sqlInsert);
@@ -1047,6 +1102,7 @@ public class VentanaPedido extends JDialog {
 
     // Actualiza la cantidad y precio de un producto en el pedido
     private void actualizarItemPedido(int productoId, int cantidad, double precio) {
+        // Conexión y actualización
         try {
             Connection con = DriverManager.getConnection("jdbc:mysql://localhost:3306/los_troncos", "root", "");
             String sql = "UPDATE `mesa pedido` SET cantidad = ?, precio_unitario = ? WHERE mesa = ? AND producto_id = ?";
@@ -1087,7 +1143,9 @@ public class VentanaPedido extends JDialog {
                 "Cerrar Mesa",
                 JOptionPane.YES_NO_OPTION);
 
+        // Si confirma el cierre, que borre el pedido
         if(opcion == JOptionPane.YES_OPTION) {
+            // Conexión y borrado
             try {
                 Connection con = DriverManager.getConnection("jdbc:mysql://localhost:3306/los_troncos", "root", "");
                 String sql = "DELETE FROM `mesa pedido` WHERE mesa = ?";
@@ -1127,12 +1185,13 @@ public class VentanaPedido extends JDialog {
         JComboBox<ComboItem> cmbTipoNuevo = new JComboBox<ComboItem>();
         JComboBox<ComboItem> cmbCategoriaNuevo = new JComboBox<ComboItem>();
 
-        // Cargar tipos
+        // Cargar tipos de productos
         try {
             Connection con = Conexion.GetConnection();
             Statement st = con.createStatement();
             ResultSet rs = st.executeQuery("SELECT id_tipo, nombre FROM tipo");
 
+            // Agregar cada tipo al ComboBox con un while
             while (rs.next()) {
                 cmbTipoNuevo.addItem(new ComboItem(rs.getString("nombre"), rs.getInt("id_tipo")));
             }
@@ -1161,6 +1220,7 @@ public class VentanaPedido extends JDialog {
             e.printStackTrace();
         }
 
+        // Agregar componentes al panel
         panel.add(new JLabel("Nombre:"));
         panel.add(txtNombre);
         panel.add(new JLabel("Stock:"));
@@ -1175,15 +1235,19 @@ public class VentanaPedido extends JDialog {
         int resultado = JOptionPane.showConfirmDialog(this, panel,
                 "Agregar Nuevo Producto", JOptionPane.OK_CANCEL_OPTION);
 
+        // Si presionó OK, validar y guardar
         if (resultado == JOptionPane.OK_OPTION) {
             try {
+                // Obtener datos ingresados
                 String nombre = txtNombre.getText().trim();
                 int stock = Integer.parseInt(txtStock.getText().trim());
                 double precio = Double.parseDouble(txtPrecio.getText().trim());
 
+                // Obtener tipo y categoría seleccionados
                 ComboItem tipoSel = (ComboItem) cmbTipoNuevo.getSelectedItem();
                 ComboItem catSel = (ComboItem) cmbCategoriaNuevo.getSelectedItem();
 
+                // Validaciones
                 if (nombre.isEmpty()) {
                     JOptionPane.showMessageDialog(this, "El nombre no puede estar vacío",
                             "Error", JOptionPane.ERROR_MESSAGE);
@@ -1210,6 +1274,7 @@ public class VentanaPedido extends JDialog {
                 ps.close();
                 con.close();
 
+                // Mostrar mensaje de éxito
                 JOptionPane.showMessageDialog(this, "Producto agregado correctamente",
                         "Éxito", JOptionPane.INFORMATION_MESSAGE);
                 filtrarProductos();
@@ -1247,6 +1312,7 @@ public class VentanaPedido extends JDialog {
         JTextField txtStock = new JTextField(String.valueOf(stockActual));
         JTextField txtPrecio = new JTextField(String.valueOf(precioActual));
 
+        // Agregar componentes al panel
         panel.add(new JLabel("Nombre:"));
         panel.add(txtNombre);
         panel.add(new JLabel("Stock:"));
@@ -1257,12 +1323,14 @@ public class VentanaPedido extends JDialog {
         int resultado = JOptionPane.showConfirmDialog(this, panel,
                 "Editar Producto", JOptionPane.OK_CANCEL_OPTION);
 
+        // Si presionó OK, validar y guardar
         if (resultado == JOptionPane.OK_OPTION) {
             try {
                 String nombre = txtNombre.getText().trim();
                 int stock = Integer.parseInt(txtStock.getText().trim());
                 double precio = Double.parseDouble(txtPrecio.getText().trim());
 
+                // Validaciones
                 if (nombre.isEmpty()) {
                     JOptionPane.showMessageDialog(this, "El nombre no puede estar vacío",
                             "Error", JOptionPane.ERROR_MESSAGE);
@@ -1288,6 +1356,7 @@ public class VentanaPedido extends JDialog {
                 ps.close();
                 con.close();
 
+                // Mostrar mensaje de éxito
                 JOptionPane.showMessageDialog(this, "Producto actualizado correctamente",
                         "Éxito", JOptionPane.INFORMATION_MESSAGE);
                 filtrarProductos();
@@ -1330,6 +1399,7 @@ public class VentanaPedido extends JDialog {
                     JOptionPane.YES_NO_OPTION,
                     JOptionPane.ERROR_MESSAGE);
 
+            // si confirma, eliminar
             if(opcion2 == JOptionPane.YES_OPTION) {
                 try {
                     Connection con = DriverManager.getConnection("jdbc:mysql://localhost:3306/los_troncos", "root", "");
@@ -1368,16 +1438,17 @@ public class VentanaPedido extends JDialog {
             return value;
         }
 
-        // Este método define qué se muestra en el ComboBox
+        // Este metodo define qué se muestra en el ComboBox
         public String toString() {
             return key;
         }
     }
 
-    // Elimina un item seleccionado del pedido
+    // Elimina un item seleccionado del pedido, no de la base de datos
     private void eliminarItemPedido() {
         int fila = tablaPedido.getSelectedRow();
 
+        // Verificar que se haya seleccionado una fila
         if (fila == -1) {
             JOptionPane.showMessageDialog(this,
                     "Seleccione un producto del pedido para eliminar",
@@ -1385,7 +1456,6 @@ public class VentanaPedido extends JDialog {
                     JOptionPane.WARNING_MESSAGE);
             return;
         }
-
         // Obtener datos del item
         int idProducto = (int) modeloTablaPedido.getValueAt(fila, 0);
         String nombreProducto = (String) modeloTablaPedido.getValueAt(fila, 1);

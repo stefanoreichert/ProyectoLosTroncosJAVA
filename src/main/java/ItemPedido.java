@@ -1,9 +1,12 @@
+// Clase que representa un ítem en un pedido de compra
 public class ItemPedido {
+    // Atributos
     private int idProducto;
     private String nombreProducto;
     private double precioUnitario;
     private int cantidad;
 
+    // Constructor
     public ItemPedido(int idProducto, String nombreProducto, double precioUnitario, int cantidad) {
         this.idProducto = idProducto;
         this.nombreProducto = nombreProducto;

@@ -1,13 +1,15 @@
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
-import java.sql.*;
-import java.time.LocalDateTime;
-import java.util.Map;
+import java.util.ArrayList; // lista dinámica
+import java.util.List; // interfaz de lista
+import java.util.concurrent.ConcurrentHashMap; // mapa seguro para multihilos
+import java.sql.*; // conexión y consultas a base de datos
+import java.time.LocalDateTime; // fecha y hora moderna
+import java.util.Map; // estructura clave-valor
+
 
 
 // Clase para gestionar todos los pedidos de todas las mesas en memoria
 public class ModeloPedidos {
+    // Mapa concurrente para manejar pedidos por mesa
     private static final ConcurrentHashMap<Integer, List<ItemPedido>> pedidosPorMesa = new ConcurrentHashMap<>(); // Mapa de mesa -> lista de items de pedido
     private static final Map<Integer, LocalDateTime> horaPrimerPedido = new ConcurrentHashMap<>();
 
@@ -66,6 +68,7 @@ public class ModeloPedidos {
     // Verifica si la mesa tiene algún pedido pendiente en la BASE DE DATOS (para cambiar el color del botón)
     public static boolean tienePedido(int numeroMesa) {
         try {
+            // Conexión a la base de datos
             Connection con = DriverManager.getConnection("jdbc:mysql://localhost:3306/los_troncos", "root", "");
             String sql = "SELECT COUNT(*) as total FROM `mesa pedido` WHERE mesa = ?";
             PreparedStatement ps = con.prepareStatement(sql);
@@ -103,10 +106,12 @@ public class ModeloPedidos {
         return total;
     }
 
-    // Agregar este método a la clase ModeloPedidos
+    // Agregar este metodo a la clase ModeloPedidos
     public static List<ItemPedido> cargarPedidoDesdeBD(int numeroMesa) {
+        // Crear una lista para almacenar los items del pedido
         List<ItemPedido> pedido = new ArrayList<>();
 
+        // Conectar a la base de datos y cargar los items del pedido
         try {
             Connection con = DriverManager.getConnection("jdbc:mysql://localhost:3306/los_troncos", "root", "");
 
@@ -117,6 +122,7 @@ public class ModeloPedidos {
                     "INNER JOIN productos p ON mp.producto_id = p.id " +
                     "WHERE mp.mesa = ?";
 
+            // Ejecutar la query
             PreparedStatement ps = con.prepareStatement(sql);
             ps.setInt(1, numeroMesa);
             ResultSet rs = ps.executeQuery();
@@ -145,15 +151,15 @@ public class ModeloPedidos {
         return pedido;
     }
 
-    //
+    // Registra la hora del primer pedido de una mesa en memoria
     public static void registrarPrimerPedido(int numeroMesa) {
         // Si ya está registrada, no hacemos nada
         horaPrimerPedido.computeIfAbsent(numeroMesa, k -> LocalDateTime.now());
     }
 
-    //
     // Obtiene la hora del primer pedido de una mesa desde la BD
     public static LocalDateTime getHoraPrimerPedido(int numeroMesa) {
+        // Conectar a la base de datos y obtener la hora del primer pedido
         try {
             Connection con = DriverManager.getConnection("jdbc:mysql://localhost:3306/los_troncos", "root", "");
             String sql = "SELECT MIN(hora_pedido) as primera_hora FROM `mesa pedido` WHERE mesa = ?";
